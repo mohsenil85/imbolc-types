@@ -1,7 +1,7 @@
 use serde::{Serialize, Deserialize};
 
 use super::ModulatedParam;
-use crate::Param;
+use crate::{Param, ParamValue};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FilterType {
@@ -50,10 +50,19 @@ impl FilterType {
             FilterType::Vowel, FilterType::ResDrive,
         ]
     }
-}
 
-// Note: default_extra_params() stays in imbolc-core because it constructs Param values
-// with specific defaults that are part of business logic.
+    pub fn default_extra_params(&self) -> Vec<Param> {
+        match self {
+            FilterType::Vowel => vec![
+                Param { name: "shape".to_string(), value: ParamValue::Float(0.0), min: 0.0, max: 1.0 },
+            ],
+            FilterType::ResDrive => vec![
+                Param { name: "drive".to_string(), value: ParamValue::Float(1.0), min: 1.0, max: 8.0 },
+            ],
+            _ => vec![],
+        }
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FilterConfig {
@@ -63,7 +72,16 @@ pub struct FilterConfig {
     pub extra_params: Vec<Param>,
 }
 
-// Note: FilterConfig::new() stays in imbolc-core because it calls default_extra_params()
+impl FilterConfig {
+    pub fn new(filter_type: FilterType) -> Self {
+        Self {
+            extra_params: filter_type.default_extra_params(),
+            filter_type,
+            cutoff: ModulatedParam { value: 1000.0, min: 20.0, max: 20000.0, mod_source: None },
+            resonance: ModulatedParam { value: 0.5, min: 0.0, max: 1.0, mod_source: None },
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EqBandType {
