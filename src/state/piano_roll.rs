@@ -13,6 +13,17 @@ pub struct Note {
     pub probability: f32, // 0.0-1.0, default 1.0 (always play)
 }
 
+/// A note stored with position relative to the selection anchor.
+/// anchor = (min_tick of selected notes, min_pitch of selected notes)
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClipboardNote {
+    pub tick_offset: u32,    // tick - anchor_tick
+    pub pitch_offset: i16,   // pitch as i16 - anchor_pitch as i16
+    pub duration: u32,
+    pub velocity: u8,
+    pub probability: f32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Track {
     pub module_id: InstrumentId,
