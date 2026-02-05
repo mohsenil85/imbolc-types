@@ -77,6 +77,8 @@ pub enum LfoTarget {
     MembraneTension,
     Decay,
     Sustain,
+    StretchRatio,
+    PitchShift,
 }
 
 impl LfoTarget {
@@ -112,6 +114,8 @@ impl LfoTarget {
             LfoTarget::MembraneTension => "Tensn",
             LfoTarget::Decay => "Decay",
             LfoTarget::Sustain => "Sustn",
+            LfoTarget::StretchRatio => "Strch",
+            LfoTarget::PitchShift => "PtchSh",
         }
     }
 
@@ -148,6 +152,8 @@ impl LfoTarget {
             LfoTarget::MembraneTension,
             LfoTarget::Decay,
             LfoTarget::Sustain,
+            LfoTarget::StretchRatio,
+            LfoTarget::PitchShift,
         ]
     }
 
@@ -182,7 +188,9 @@ impl LfoTarget {
             LfoTarget::AdditiveRolloff => LfoTarget::MembraneTension,
             LfoTarget::MembraneTension => LfoTarget::Decay,
             LfoTarget::Decay => LfoTarget::Sustain,
-            LfoTarget::Sustain => LfoTarget::FilterCutoff,
+            LfoTarget::Sustain => LfoTarget::StretchRatio,
+            LfoTarget::StretchRatio => LfoTarget::PitchShift,
+            LfoTarget::PitchShift => LfoTarget::FilterCutoff,
         }
     }
 }
