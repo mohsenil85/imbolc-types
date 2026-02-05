@@ -29,6 +29,7 @@ pub enum SourceType {
     AudioIn,
     BusIn,
     PitchedSampler,
+    TimeStretch,
     Kit,
     Custom(CustomSynthDefId),
     Vst(VstPluginId),
@@ -62,6 +63,7 @@ impl SourceType {
             SourceType::AudioIn => "Audio In",
             SourceType::BusIn => "Bus In",
             SourceType::PitchedSampler => "Pitched Sampler",
+            SourceType::TimeStretch => "Time Stretch",
             SourceType::Kit => "Kit",
             SourceType::Custom(_) => "Custom",
             SourceType::Vst(_) => "VST",
@@ -95,6 +97,7 @@ impl SourceType {
             SourceType::AudioIn => "audio_in",
             SourceType::BusIn => "bus_in",
             SourceType::PitchedSampler => "sample",
+            SourceType::TimeStretch => "stretch",
             SourceType::Kit => "kit",
             SourceType::Custom(_) => "custom",
             SourceType::Vst(_) => "vst",
@@ -129,6 +132,7 @@ impl SourceType {
             SourceType::AudioIn => "imbolc_audio_in",
             SourceType::BusIn => "imbolc_bus_in",
             SourceType::PitchedSampler => "imbolc_sampler",
+            SourceType::TimeStretch => "imbolc_timestretch",
             SourceType::Kit => "imbolc_sampler_oneshot",
             SourceType::Custom(_) => "imbolc_saw", // Fallback, use synth_def_name_with_registry instead
             SourceType::Vst(_) => "imbolc_vst_instrument",
@@ -145,6 +149,10 @@ impl SourceType {
 
     pub fn is_kit(&self) -> bool {
         matches!(self, SourceType::Kit)
+    }
+
+    pub fn is_time_stretch(&self) -> bool {
+        matches!(self, SourceType::TimeStretch)
     }
 
     pub fn is_bus_in(&self) -> bool {
@@ -185,7 +193,7 @@ impl SourceType {
             SourceType::Pluck, SourceType::Formant, SourceType::Gendy, SourceType::Chaos,
             SourceType::Additive, SourceType::Wavetable, SourceType::Granular,
             SourceType::Bowed, SourceType::Blown, SourceType::Membrane,
-            SourceType::AudioIn, SourceType::BusIn, SourceType::PitchedSampler, SourceType::Kit,
+            SourceType::AudioIn, SourceType::BusIn, SourceType::PitchedSampler, SourceType::TimeStretch, SourceType::Kit,
         ]
     }
 
@@ -311,6 +319,13 @@ impl SourceType {
                 Param { name: "rate".to_string(), value: ParamValue::Float(1.0), min: -2.0, max: 2.0 },
                 Param { name: "amp".to_string(), value: ParamValue::Float(0.8), min: 0.0, max: 1.0 },
                 Param { name: "loop".to_string(), value: ParamValue::Bool(false), min: 0.0, max: 1.0 },
+            ],
+            SourceType::TimeStretch => vec![
+                Param { name: "stretch".to_string(), value: ParamValue::Float(1.0), min: 0.25, max: 4.0 },
+                Param { name: "pitch".to_string(), value: ParamValue::Float(0.0), min: -24.0, max: 24.0 },
+                Param { name: "grain_size".to_string(), value: ParamValue::Float(0.1), min: 0.01, max: 0.5 },
+                Param { name: "overlap".to_string(), value: ParamValue::Int(4), min: 1.0, max: 8.0 },
+                Param { name: "amp".to_string(), value: ParamValue::Float(0.8), min: 0.0, max: 1.0 },
             ],
             SourceType::Kit => vec![],
             SourceType::Custom(_) => vec![],
