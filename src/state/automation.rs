@@ -231,3 +231,270 @@ impl AutomationTarget {
         }
     }
 }
+
+/// An automation lane containing points for a single parameter
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AutomationLane {
+    pub id: AutomationLaneId,
+    pub target: AutomationTarget,
+    pub points: Vec<AutomationPoint>,
+    pub enabled: bool,
+    /// Whether this lane is armed for recording
+    pub record_armed: bool,
+    /// Minimum value for this parameter
+    pub min_value: f32,
+    /// Maximum value for this parameter
+    pub max_value: f32,
+}
+
+impl AutomationLane {
+    pub fn new(id: AutomationLaneId, target: AutomationTarget) -> Self {
+        let (min_value, max_value) = target.default_range();
+        Self {
+            id,
+            target,
+            points: Vec::new(),
+            enabled: true,
+            record_armed: false,
+            min_value,
+            max_value,
+        }
+    }
+
+    /// Add a point at the given tick (inserts in sorted order)
+    pub fn add_point(&mut self, tick: u32, value: f32) {
+        // Remove existing point at same tick
+        self.points.retain(|p| p.tick != tick);
+
+        let point = AutomationPoint::new(tick, value);
+        let pos = self.points.iter().position(|p| p.tick > tick).unwrap_or(self.points.len());
+        self.points.insert(pos, point);
+    }
+
+    /// Remove point at or near the given tick
+    pub fn remove_point(&mut self, tick: u32) {
+        self.points.retain(|p| p.tick != tick);
+    }
+
+    /// Get the interpolated value at a given tick position
+    pub fn value_at(&self, tick: u32) -> Option<f32> {
+        if self.points.is_empty() || !self.enabled {
+            return None;
+        }
+
+        // Find surrounding points
+        let mut prev: Option<&AutomationPoint> = None;
+        let mut next: Option<&AutomationPoint> = None;
+
+        for point in &self.points {
+            if point.tick <= tick {
+                prev = Some(point);
+            } else {
+                next = Some(point);
+                break;
+            }
+        }
+
+        let normalized = match (prev, next) {
+            (Some(p), None) => p.value,
+            (None, Some(n)) => n.value,
+            (Some(p), Some(_n)) if p.tick == tick => p.value,
+            (Some(p), Some(n)) => {
+                // Interpolate between p and n
+                let t = (tick - p.tick) as f32 / (n.tick - p.tick) as f32;
+                Self::interpolate(p.value, n.value, t, p.curve)
+            }
+            (None, None) => return None,
+        };
+
+        // Convert from normalized (0-1) to actual value range
+        Some(self.min_value + normalized * (self.max_value - self.min_value))
+    }
+
+    /// Interpolate between two values based on curve type
+    fn interpolate(from: f32, to: f32, t: f32, curve: CurveType) -> f32 {
+        match curve {
+            CurveType::Linear => from + (to - from) * t,
+            CurveType::Step => from,
+            CurveType::Exponential => {
+                // Exponential interpolation (good for frequency)
+                let t_exp = t * t;
+                from + (to - from) * t_exp
+            }
+            CurveType::SCurve => {
+                // Smoothstep S-curve
+                let t_smooth = t * t * (3.0 - 2.0 * t);
+                from + (to - from) * t_smooth
+            }
+        }
+    }
+
+    /// Get the first point at or after the given tick
+    pub fn point_at_or_after(&self, tick: u32) -> Option<&AutomationPoint> {
+        self.points.iter().find(|p| p.tick >= tick)
+    }
+
+    /// Get the last point before the given tick
+    pub fn point_before(&self, tick: u32) -> Option<&AutomationPoint> {
+        self.points.iter().rev().find(|p| p.tick < tick)
+    }
+
+    /// Find point at exact tick
+    pub fn point_at(&self, tick: u32) -> Option<&AutomationPoint> {
+        self.points.iter().find(|p| p.tick == tick)
+    }
+
+    /// Find mutable point at exact tick
+    pub fn point_at_mut(&mut self, tick: u32) -> Option<&mut AutomationPoint> {
+        self.points.iter_mut().find(|p| p.tick == tick)
+    }
+}
+
+/// Collection of automation lanes for a session
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AutomationState {
+    pub lanes: Vec<AutomationLane>,
+    pub selected_lane: Option<usize>,
+    /// Next lane ID to assign (internal, but exposed for persistence)
+    pub next_lane_id: AutomationLaneId,
+}
+
+impl AutomationState {
+    pub fn new() -> Self {
+        Self {
+            lanes: Vec::new(),
+            selected_lane: None,
+            next_lane_id: 0,
+        }
+    }
+
+    /// Recalculate next_lane_id from existing lanes (used after loading from DB)
+    pub fn recalculate_next_lane_id(&mut self) {
+        self.next_lane_id = self.lanes.iter().map(|l| l.id).max().map_or(0, |m| m + 1);
+    }
+
+    /// Add a new automation lane for a target
+    pub fn add_lane(&mut self, target: AutomationTarget) -> AutomationLaneId {
+        // Check if lane already exists for this target
+        if let Some(existing) = self.lanes.iter().find(|l| l.target == target) {
+            return existing.id;
+        }
+
+        let id = self.next_lane_id;
+        self.next_lane_id += 1;
+        let lane = AutomationLane::new(id, target);
+        self.lanes.push(lane);
+
+        if self.selected_lane.is_none() {
+            self.selected_lane = Some(self.lanes.len() - 1);
+        }
+
+        id
+    }
+
+    /// Remove a lane by ID
+    pub fn remove_lane(&mut self, id: AutomationLaneId) {
+        if let Some(pos) = self.lanes.iter().position(|l| l.id == id) {
+            self.lanes.remove(pos);
+            // Adjust selection
+            if let Some(sel) = self.selected_lane {
+                if sel >= self.lanes.len() && !self.lanes.is_empty() {
+                    self.selected_lane = Some(self.lanes.len() - 1);
+                } else if self.lanes.is_empty() {
+                    self.selected_lane = None;
+                }
+            }
+        }
+    }
+
+    /// Get lane by ID
+    pub fn lane(&self, id: AutomationLaneId) -> Option<&AutomationLane> {
+        self.lanes.iter().find(|l| l.id == id)
+    }
+
+    /// Get mutable lane by ID
+    pub fn lane_mut(&mut self, id: AutomationLaneId) -> Option<&mut AutomationLane> {
+        self.lanes.iter_mut().find(|l| l.id == id)
+    }
+
+    /// Get lane for a specific target
+    pub fn lane_for_target(&self, target: &AutomationTarget) -> Option<&AutomationLane> {
+        self.lanes.iter().find(|l| &l.target == target)
+    }
+
+    /// Get mutable lane for a specific target
+    pub fn lane_for_target_mut(&mut self, target: &AutomationTarget) -> Option<&mut AutomationLane> {
+        self.lanes.iter_mut().find(|l| &l.target == target)
+    }
+
+    /// Get all lanes for a specific instrument
+    pub fn lanes_for_instrument(&self, instrument_id: InstrumentId) -> Vec<&AutomationLane> {
+        self.lanes.iter().filter(|l| l.target.instrument_id() == Some(instrument_id)).collect()
+    }
+
+    /// Selected lane
+    pub fn selected(&self) -> Option<&AutomationLane> {
+        self.selected_lane.and_then(|i| self.lanes.get(i))
+    }
+
+    /// Selected lane (mutable)
+    pub fn selected_mut(&mut self) -> Option<&mut AutomationLane> {
+        self.selected_lane.and_then(|i| self.lanes.get_mut(i))
+    }
+
+    /// Select next lane
+    pub fn select_next(&mut self) {
+        if self.lanes.is_empty() {
+            self.selected_lane = None;
+            return;
+        }
+        self.selected_lane = match self.selected_lane {
+            None => Some(0),
+            Some(i) if i + 1 < self.lanes.len() => Some(i + 1),
+            Some(i) => Some(i),
+        };
+    }
+
+    /// Select previous lane
+    pub fn select_prev(&mut self) {
+        if self.lanes.is_empty() {
+            self.selected_lane = None;
+            return;
+        }
+        self.selected_lane = match self.selected_lane {
+            None => Some(0),
+            Some(0) => Some(0),
+            Some(i) => Some(i - 1),
+        };
+    }
+
+    /// Remove all lanes for an instrument (when instrument is deleted)
+    pub fn remove_lanes_for_instrument(&mut self, instrument_id: InstrumentId) {
+        self.lanes.retain(|l| l.target.instrument_id() != Some(instrument_id));
+        // Adjust selection
+        if let Some(sel) = self.selected_lane {
+            if sel >= self.lanes.len() {
+                self.selected_lane = if self.lanes.is_empty() {
+                    None
+                } else {
+                    Some(self.lanes.len() - 1)
+                };
+            }
+        }
+    }
+
+    /// Remove all lanes for a bus (when bus is deleted)
+    pub fn remove_lanes_for_bus(&mut self, bus_id: u8) {
+        self.lanes.retain(|l| !matches!(l.target, AutomationTarget::BusLevel(id) if id == bus_id));
+        // Adjust selection
+        if let Some(sel) = self.selected_lane {
+            if sel >= self.lanes.len() {
+                self.selected_lane = if self.lanes.is_empty() {
+                    None
+                } else {
+                    Some(self.lanes.len() - 1)
+                };
+            }
+        }
+    }
+}

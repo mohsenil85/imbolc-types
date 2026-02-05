@@ -19,7 +19,7 @@ pub enum ServerStatus {
 }
 
 /// Kind of audio export operation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ExportKind {
     MasterBounce,
     StemExport,
