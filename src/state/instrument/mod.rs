@@ -14,9 +14,6 @@ use serde::{Serialize, Deserialize};
 
 use crate::InstrumentId;
 
-/// Maximum number of mixer buses.
-pub const MAX_BUSES: usize = 8;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OutputTarget {
     Master,
